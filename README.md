@@ -1,53 +1,118 @@
-# Circle Search for Mac
+# Circle to Search for Mac
 
-A menu-bar app that brings Android's Circle to Search to macOS. Press **⌥ Space**, circle anything on screen, then:
+Android's **Circle to Search**, for macOS. Press a shortcut, circle anything on your screen, and then copy its text, translate it, look it up with Google Lens, or ask Claude about it.
 
-| Button | What it does |
-|---|---|
-| **Copy text** | Reads text in the circled area on-device (Apple Vision). Select part of it with ⌘C, or press Return to copy everything and close. |
-| **Translate** | Translates that text on-device with Apple Translation. It tries the Apple Intelligence models first (macOS 26.4+, `highFidelity` strategy), which cover more languages, such as Norwegian. If Apple can't handle a language, Claude translates it instead. Pick the target language from the dropdown. |
-| **Lens** | Opens the circled image in Google Lens in your default browser. |
-| **Ask Claude** | Asks Claude about the image, and you can ask follow-ups. Needs an Anthropic API key. |
-| 🖼 | Copies the circled area as an image. |
+It's a small native menu-bar app written in Swift with AppKit and SwiftUI. There's no Electron and nothing else to install.
 
-Esc or right-click closes the overlay. Pressing the shortcut again also closes it.
+## Features
+
+- **Circle anything.** The shortcut (⌥ Space by default) freezes every display. Draw around anything with a glowing lasso, and an action panel appears next to it.
+- **Copy text.** Text in the circled area is read on your Mac with Apple Vision. You can select part of it with ⌘C, or press Return to copy everything and close.
+- **Translate.**
+  - Translation happens on your Mac with Apple's Translation framework. It prefers the **Apple Intelligence** models (macOS 26.4+), which cover extra languages such as **Norwegian Bokmål**.
+  - The app works out the source language itself with Apple's NaturalLanguage framework.
+  - If Apple can't handle a language, **Claude** translates it instead.
+- **Google Lens.** Opens the circled image in Google Lens in your default browser.
+- **Ask Claude.** Ask what's in the image, then keep asking follow-up questions in the same panel.
+- **Copy image.** Puts the circled area on the clipboard as an image.
+- **Multi-display**, **Launch at login**, and a choice of shortcut.
 
 ## Requirements
 
-- macOS 15 or later
+- macOS 15 or later. Apple Intelligence translation needs macOS 26.4+ with Apple Intelligence turned on.
 - Xcode or the Command Line Tools (`xcode-select --install`)
+- Optional: an [Anthropic API key](https://console.anthropic.com/settings/keys) for Ask Claude and the Claude translation fallback
 
-## Build and install
+## Install
 
 ```bash
-cd ~/Documents/CircleSearch
-chmod +x build.sh
+git clone git@github.com:daudsd/CircleToSearchMac.git
+cd CircleToSearchMac
 ./build.sh --install
 ```
 
-On first launch, macOS asks for **Screen Recording** permission. Allow it, then quit and reopen Circle Search from /Applications. A dashed circle icon appears in the menu bar.
+This builds `Circle Search.app`, copies it to `/Applications` and launches it. A dashed circle icon appears in the menu bar.
 
-Then open **Settings…** from the menu bar icon to:
-- change the shortcut if ⌥ Space clashes with another app (Raycast and ChatGPT both like it)
-- paste your Anthropic API key (it's stored in the Keychain)
-- choose the translation language
+On first launch, macOS asks for **Screen Recording** permission. Allow it in System Settings → Privacy & Security → Screen & System Audio Recording, then quit and reopen the app.
+
+Run `./build.sh` without `--install` to build into `build/` only.
+
+## Usage
+
+| Action | How |
+|---|---|
+| Start | ⌥ Space, or the menu-bar icon → Circle to Search |
+| Select | Click and drag around anything. Dragging again replaces the selection. |
+| Copy all text | **Copy text**, then Return |
+| Translate | **Translate**, then pick the target language from the dropdown |
+| Visual search | **Lens** or **Ask Claude** |
+| Close | Esc, ✕, right-click, or press the shortcut again |
+
+A plain click never closes the overlay, so you can click into the panel and select text freely.
+
+## Settings
+
+Open **Settings…** from the menu-bar icon to:
+
+- choose the shortcut: ⌥ Space, ⌥⇧ Space, ⌘⇧2 or ⌃⌥S. ⌥ Space clashes with Raycast and ChatGPT.
+- pick the default translation language. Languages marked **· Claude** aren't available from Apple on your Mac.
+- add your Anthropic API key. It's stored in the macOS Keychain, never in the code.
+- choose the Claude model (default `claude-haiku-5-5`, which is fast and cheap) and the first question it's asked
 - turn on Launch at login
 
-## Notes
+## Privacy
 
-- **After every rebuild**, macOS treats the app as new because it's ad-hoc signed. `--install` resets the old Screen Recording entry for you; just allow it again when asked.
-- **Lens** works by uploading through Google's normal web upload form in your browser. Google can change that form at any time. If it breaks, use 🖼 to copy the image and paste it into lens.google.com.
-- **Claude** uses `claude-haiku-5-5` by default because it's fast and cheap. You can switch to `claude-sonnet-5-5` in Settings for harder questions.
-- Text recognition and translation run entirely on your Mac. Only Lens and Claude send the image anywhere.
+| Feature | Where it runs |
+|---|---|
+| Screen capture, text recognition | On your Mac |
+| Translation (Apple) | On your Mac |
+| Translation (Claude fallback) | Sends the recognised text to the Anthropic API |
+| Ask Claude | Sends the circled image to the Anthropic API |
+| Lens | Uploads the circled image to Google Lens from your browser |
 
-## Code map
+Nothing leaves your Mac unless you press Lens, Ask Claude, or translate a language that Apple doesn't support.
+
+## Troubleshooting
+
+**Screen Recording keeps asking after a rebuild.** The app is ad-hoc signed, so macOS treats every build as a new app. `./build.sh --install` resets the old entry for you, so just allow it again.
+
+**Shortcut does nothing.** Another app probably uses it. You'll get an alert on launch. Pick a different shortcut in Settings.
+
+**Translation says a language isn't supported.** Run the check script to see exactly what macOS offers on your Mac:
+
+```bash
+swift Tools/translation-check.swift
+```
+
+It prints whether Apple Intelligence is on, which languages each Apple model supports, and the result of a test Norwegian → English translation. To translate languages Apple doesn't support, add an API key so Claude can handle them.
+
+**Lens shows an error page.** Lens works by uploading through Google's normal web form, which Google can change at any time. Use the copy-image button instead and paste the image into [lens.google.com](https://lens.google.com).
+
+## How it works
+
+```
+⌥ Space ─► HotKeyManager (Carbon)
+        ─► CaptureController ─► ScreenCaptureKit screenshot of each display
+        ─► OverlayWindow per display (frozen image + lasso)
+        ─► crop ─► ActionPanel (SwiftUI)
+                    ├─ Vision           text recognition
+                    ├─ Translation      Apple Intelligence / standard models
+                    ├─ Anthropic API    Ask Claude + translation fallback
+                    └─ Google Lens      browser upload
+```
 
 | File | Purpose |
 |---|---|
-| `AppDelegate.swift` | Menu bar item, shortcut, Settings window |
-| `HotKey.swift` | Global shortcut (Carbon `RegisterEventHotKey`) |
-| `CaptureController.swift` / `ScreenCapturer.swift` | Freezes every display with ScreenCaptureKit |
+| `AppDelegate.swift` | Menu-bar item, shortcut registration, Settings window |
+| `HotKey.swift` | Global shortcut via Carbon `RegisterEventHotKey`, so no Accessibility permission is needed |
+| `CaptureController.swift`, `ScreenCapturer.swift` | Freezes every display with ScreenCaptureKit |
 | `Overlay.swift` | Full-screen overlay, lasso drawing, cropping, panel placement |
-| `Panel.swift` | SwiftUI action panel: OCR text, translation, Claude chat |
-| `Services.swift` | Vision OCR, Google Lens upload, Anthropic Messages API |
-| `SettingsView.swift` / `Prefs.swift` | Settings, UserDefaults keys, Keychain |
+| `Panel.swift` | SwiftUI action panel: text, translation, Claude chat |
+| `AppleTranslation.swift` | Language detection and Apple translation model selection |
+| `Services.swift` | Vision text recognition, Google Lens upload, Anthropic Messages API |
+| `SettingsView.swift`, `Prefs.swift` | Settings UI, UserDefaults keys, Keychain |
+| `Tools/translation-check.swift` | Diagnostic script for Apple translation support |
+
+## Credits
+
+Inspired by Google's Circle to Search and [AKS-Labs/CircleToSearch](https://github.com/AKS-Labs/CircleToSearch) for Android.
